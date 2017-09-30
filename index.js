@@ -87,18 +87,12 @@ app.post('/twilio', function (req, res) {
 // API.AI webhook endpoint
 app.post('/apiai', function (req, res) {
   console.log('Hit API.AI hook')
+  console.log(req.body)
   twilioClient.messages.create({
     to: '+' + req.body.sessionId,
     from: '+14159682217',
     body: req.body.result.fulfillment.messages[0]
   })
-    .then(function (message) {
-      console.log('Sent message from Pepper')
-    })
-    .catch(function (err) {
-      console.log('Failed to send message from Pepper')
-      console.error(err)
-    })
   res.send('Success')
 })
 
