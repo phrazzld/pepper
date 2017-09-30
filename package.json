@@ -1,0 +1,22 @@
+{
+  "name": "pepper",
+  "version": "1.0.0",
+  "description": "Social. Managed.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "phaedrus raznikov",
+  "license": "ISC",
+  "dependencies": {
+    "body-parser": "^1.18.2",
+    "express": "^4.16.1",
+    "express-sanitizer": "^1.0.2",
+    "moment": "^2.18.1",
+    "moment-timezone": "^0.5.13",
+    "mongodb": "^2.2.31",
+    "mongoose": "^4.11.13",
+    "request": "^2.83.0",
+    "twilio": "^3.7.0"
+  }
+}
