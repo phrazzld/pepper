@@ -88,11 +88,14 @@ app.post('/twilio', function (req, res) {
 app.post('/apiai', function (req, res) {
   console.log('Hit API.AI hook')
   console.log(req.body)
-  twilioClient.messages.create({
-    to: '+' + req.body.sessionId,
-    from: '+14159682217',
-    body: req.body.result.fulfillment.messages[0]
-  })
+  console.log('twilioClient')
+  console.log(twilioClient)
+  twilioClient.messages
+    .create({
+      to: '+' + req.body.sessionId,
+      from: '+14159682217',
+      body: req.body.result.fulfillment.speech
+    })
   res.send('Success')
 })
 
