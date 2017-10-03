@@ -10,6 +10,7 @@ var moment = require('moment-timezone')
 var request = require('request')
 var mongoose = require('mongoose')
 mongoose.Promise = global.Promise
+var User = require('./models/user')
 
 // Twilio config
 var twilioClient = require('twilio')(
@@ -75,12 +76,31 @@ app.post('/twilio', function (req, res) {
     },
     body: JSON.stringify(blob)
   }
-  request.post(opts, function (err, response, body) {
-    if (err) {
-      console.log('Error posting to API.AI')
-      console.error(err)
-    }
-  })
+  User.findOne({ phone: userPhoneNumber })
+    .then(function (user) {
+      if (user) {
+        // User exists, process request
+        console.log('Found user with phone number ' + userPhoneNumber)
+        request.post(opts, function (err, response, body) {
+          if (err) {
+            console.log('Error posting to API.AI')
+            console.error(err)
+          }
+        })
+      } else {
+        // Create new user, then process request
+        console.log('Creating user with phone number ' + userPhoneNumber)
+        User.create({ phone: userPhoneNumber })
+          .then(function (user) {
+            request.post(opts, function (err, response, body) {
+              if (err) {
+                console.log('Error posting to API.AI')
+                console.error(err)
+              }
+            })
+          })
+      }
+    })
   res.send('Success')
 })
 
@@ -88,8 +108,6 @@ app.post('/twilio', function (req, res) {
 app.post('/apiai', function (req, res) {
   console.log('Hit API.AI hook')
   console.log(req.body)
-  console.log('twilioClient')
-  console.log(twilioClient)
   twilioClient.messages
     .create({
       to: '+' + req.body.sessionId,
