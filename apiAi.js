@@ -22,6 +22,7 @@ function post (data) {
     },
     body: stringified
   }
+  console.log(JSON.stringify(options, null, 2))
   // Make our request
   request.post(options, function (err, res, bod) {
     // Handle any errors if they occur
@@ -43,6 +44,7 @@ function buildEventBlob (eventName, eventData, contexts, timezone, sessionId) {
     sessionId: sessionId,
     lang: 'en'
   }
+  console.log(JSON.stringify(blob, null, 2))
   return blob
 }
 
