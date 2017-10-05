@@ -60,8 +60,48 @@ function buildQueryBlob (query, contexts, timezone, sessionId) {
   return blob
 }
 
+// Grab values for each key containing the given string
+function extractAction (keys, action) {
+  return keys.filter(function (k) {
+    if (k.indexOf(action) > -1) {
+      return k
+    }
+  })
+}
+
+// Handle the parameters returned by API.AI
+function handleParameters (params, contexts, user) {
+  var paramKeys = Object.keys(params)
+  var updates = extractAction(keys, 'updateAttribute')
+  handleUpdates(updates, params, user)
+}
+
+// Update user given parameters
+function handleUpdates (updates, params, user) {
+  for (var i = 0; i < updates.length; i++) {
+    var attribute = params[updates[i]]
+    var value = params['update-' + attribute]
+    if (value) {
+      update(attribute, value, user)
+    }
+  }
+}
+
+// Update an attribute for a given user
+function update (attribute, value, user) {
+  user[attribute] = value
+  user.save(function (err, user) {
+    if (err) {
+      console.error(err)
+    }
+  })
+}
+
 module.exports = {
   post: post,
   buildEventBlob: buildEventBlob,
-  buildQueryBlob: buildQueryBlob
+  buildQueryBlob: buildQueryBlob,
+  extractAction: extractAction,
+  handleParameters: handleParameters,
+  handleUpdates: handleUpdates
 }
