@@ -22,7 +22,7 @@ function sendText (toNumber, fromNumber, messages) {
           body: messageContent
         })
         .then(function (message) {
-          setTimeout(sendText, messageDelay, toNumber, messages)
+          setTimeout(sendText, messageDelay, toNumber, fromNumber, messages)
         })
     } else {
       console.log('No message content')
