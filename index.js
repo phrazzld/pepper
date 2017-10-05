@@ -66,8 +66,13 @@ app.post('/twilio', function (req, res) {
         console.log('Creating user with phone number ' + userPhone)
         User.create({ phone: userPhone })
           .then(function (user) {
+            console.log('New user successfully created')
             blob = apiAi.buildEventBlob('newUser', user, contexts, timezone, sessionId)
             apiAi.post(blob)
+          })
+          .catch(function (reason) {
+            console.log('Problem creating new user')
+            console.error(reason)
           })
       }
     })
