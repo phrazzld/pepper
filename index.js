@@ -1,25 +1,33 @@
-import Fastify from 'fastify';
-import WebSocket from 'ws';
-import fs from 'fs';
-import dotenv from 'dotenv';
 import fastifyFormBody from '@fastify/formbody';
 import fastifyWs from '@fastify/websocket';
+import dotenv from 'dotenv';
+import Fastify from 'fastify';
+import twilio from 'twilio';
+import WebSocket from 'ws';
 
 // Load environment variables from .env file
 dotenv.config();
 
 // Retrieve the OpenAI API key from environment variables. You must have OpenAI Realtime API access.
-const { OPENAI_API_KEY } = process.env;
+const { OPENAI_API_KEY, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN } = process.env;
 
 if (!OPENAI_API_KEY) {
   console.error('Missing OpenAI API key. Please set it in the .env file.');
   process.exit(1);
 }
 
+if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
+  console.error('Missing Twilio Account SID or Auth Token. Please set them in the .env file.')
+  process.exit(1)
+}
+
 // Initialize Fastify
 const fastify = Fastify();
 fastify.register(fastifyFormBody);
 fastify.register(fastifyWs);
+
+// Initialize Twilio client
+const twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 
 // Constants
 const SYSTEM_MESSAGE = 'You are a helpful and bubbly secretary for Phaedrus Raznikov. Callers are trying to reach Phaedrus. You are trying to find out whether or not to connect them or screen them.';
@@ -63,7 +71,6 @@ fastify.register(async (fastify) => {
   fastify.get('/media-stream', { websocket: true }, (connection, req) => {
     console.log('Client connected');
 
-
     const openAiWs = new WebSocket('wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01', {
       headers: {
         Authorization: `Bearer ${OPENAI_API_KEY}`,
@@ -72,6 +79,7 @@ fastify.register(async (fastify) => {
     });
 
     let streamSid = null;
+    let callSid = null;
 
     const sendSessionUpdate = () => {
       const sessionUpdate = {
@@ -84,6 +92,21 @@ fastify.register(async (fastify) => {
           instructions: SYSTEM_MESSAGE,
           modalities: ["text", "audio"],
           temperature: 0.8,
+          tools: [{
+            name: 'hangUp',
+            description: 'Hang up the call',
+            type: 'function',
+            parameters: {
+              type: 'object',
+              properties: {
+                reason: {
+                  type: 'string',
+                  description: 'Reason for hanging up the call',
+                }
+              },
+              required: ['reason']
+            }
+          }]
         }
       };
 
@@ -101,6 +124,26 @@ fastify.register(async (fastify) => {
     openAiWs.on('message', (data) => {
       try {
         const response = JSON.parse(data);
+
+        if (response.type === 'response.output_item.done' && response.item.type === 'function_call') {
+          const { name, arguments: args } = response.item;
+          console.log('Received function call:', name, args);
+
+          if (name === 'hangUp') {
+            const hangupReason = args.reason;
+            console.log('Hanging up call:', hangupReason);
+
+            // Hang up the call via Twilio REST API
+            if (callSid) {
+              twilioClient.calls(callSid)
+                .update({ status: 'completed' })
+                .then(call => console.log(`Call ${callSid} has been hung up.`))
+                .catch(error => console.error('Error hanging up the call:', error));
+            } else {
+              console.error('callSid is not available. Cannot hang up the call.');
+            }
+          }
+        }
 
         if (LOG_EVENT_TYPES.includes(response.type)) {
           console.log(`Received event: ${response.type}`, response);
@@ -141,7 +184,8 @@ fastify.register(async (fastify) => {
             break;
           case 'start':
             streamSid = data.start.streamSid;
-            console.log('Incoming stream has started', streamSid);
+            callSid = data.start.callSid;
+            console.log('Incoming stream has started', streamSid, callSid);
             break;
           default:
             console.log('Received non-media event:', data.event);
