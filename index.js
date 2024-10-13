@@ -21,9 +21,6 @@ fastify.get('/', async (_request, reply) => {
 fastify.all('/incoming-call', async (request, reply) => {
   const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
                           <Response>
-                              <Say>You have reached the office of Phaedrus Raznikov.</Say>
-                              <Pause length="1"/>
-                              <Say>Please state your name and the reason for your call.</Say>
                               <Connect>
                                   <Stream url="wss://${request.headers.host}/media-stream" />
                               </Connect>
@@ -105,7 +102,14 @@ fastify.register(async (fastify) => {
     // Open event for OpenAI WebSocket
     openAiWs.on('open', () => {
       console.log('Connected to the OpenAI Realtime API');
-      setTimeout(sendSessionUpdate, 250); // Ensure connection stability, send after .25 seconds
+      setTimeout(() => {
+        sendSessionUpdate();
+        // Send a message to the OpenAI WebSocket to initialize the conversation
+        openAiWs.send(JSON.stringify({
+          type: 'input.text',
+          text: 'Hello'
+        }))
+      }, 250); // Ensure connection stability, send after .25 seconds
     });
 
     // Listen for messages from the OpenAI WebSocket (and send to Twilio if necessary)
