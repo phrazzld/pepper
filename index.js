@@ -1,52 +1,18 @@
 import fastifyFormBody from '@fastify/formbody';
 import fastifyWs from '@fastify/websocket';
-import dotenv from 'dotenv';
 import Fastify from 'fastify';
-import twilio from 'twilio';
 import WebSocket from 'ws';
-
-// Load environment variables from .env file
-dotenv.config();
-
-// Retrieve the OpenAI API key from environment variables. You must have OpenAI Realtime API access.
-const { OPENAI_API_KEY, TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN } = process.env;
-
-if (!OPENAI_API_KEY) {
-  console.error('Missing OpenAI API key. Please set it in the .env file.');
-  process.exit(1);
-}
-
-if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) {
-  console.error('Missing Twilio Account SID or Auth Token. Please set them in the .env file.')
-  process.exit(1)
-}
+import { OPENAI_API_KEY } from './config.js';
+import { FORWARDING_NUMBER, LOG_EVENT_TYPES, OPENAI_REALTIME_API_URL, PORT, SYSTEM_MESSAGE, VOICE } from './constants.js';
+import { twilioClient } from './twilio-client.js';
 
 // Initialize Fastify
 const fastify = Fastify();
 fastify.register(fastifyFormBody);
 fastify.register(fastifyWs);
 
-// Initialize Twilio client
-const twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
-
-// Constants
-const SYSTEM_MESSAGE = 'You are a helpful and bubbly secretary for Phaedrus Raznikov. Callers are trying to reach Phaedrus. You are trying to find out whether or not to connect them or screen them.';
-const VOICE = 'alloy';
-const PORT = process.env.PORT || 5050; // Allow dynamic port assignment
-
-// List of Event Types to log to the console. See OpenAI Realtime API Documentation. (session.updated is handled separately.)
-const LOG_EVENT_TYPES = [
-  'response.content.done',
-  'rate_limits.updated',
-  'response.done',
-  'input_audio_buffer.committed',
-  'input_audio_buffer.speech_stopped',
-  'input_audio_buffer.speech_started',
-  'session.created'
-];
-
 // Root Route
-fastify.get('/', async (request, reply) => {
+fastify.get('/', async (_request, reply) => {
   reply.send({ message: 'Twilio Media Stream Server is running!' });
 });
 
@@ -55,7 +21,7 @@ fastify.get('/', async (request, reply) => {
 fastify.all('/incoming-call', async (request, reply) => {
   const twimlResponse = `<?xml version="1.0" encoding="UTF-8"?>
                           <Response>
-                              <Say>You have reached the office of Faydriss.</Say>
+                              <Say>You have reached the office of Phaedrus Raznikov.</Say>
                               <Pause length="1"/>
                               <Say>Please state your name and the reason for your call.</Say>
                               <Connect>
@@ -68,10 +34,10 @@ fastify.all('/incoming-call', async (request, reply) => {
 
 // WebSocket route for media-stream
 fastify.register(async (fastify) => {
-  fastify.get('/media-stream', { websocket: true }, (connection, req) => {
+  fastify.get('/media-stream', { websocket: true }, (connection, _req) => {
     console.log('Client connected');
 
-    const openAiWs = new WebSocket('wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-10-01', {
+    const openAiWs = new WebSocket(OPENAI_REALTIME_API_URL, {
       headers: {
         Authorization: `Bearer ${OPENAI_API_KEY}`,
         "OpenAI-Beta": "realtime=v1"
@@ -92,21 +58,43 @@ fastify.register(async (fastify) => {
           instructions: SYSTEM_MESSAGE,
           modalities: ["text", "audio"],
           temperature: 0.8,
-          tools: [{
-            name: 'hangUp',
-            description: 'Hang up the call',
-            type: 'function',
-            parameters: {
-              type: 'object',
-              properties: {
-                reason: {
-                  type: 'string',
-                  description: 'Reason for hanging up the call',
-                }
+
+          tools: [
+            {
+              name: 'hangUp',
+              description: 'Hang up the call',
+              type: 'function',
+              parameters: {
+                type: 'object',
+                properties: {
+                  reason: {
+                    type: 'string',
+                    description: 'Reason for hanging up the call',
+                  },
+                },
+                required: ['reason'],
               },
-              required: ['reason']
-            }
-          }]
+            },
+            {
+              name: 'forwardCall',
+              description: 'Forward the call to another phone number',
+              type: 'function',
+              parameters: {
+                type: 'object',
+                properties: {
+                  to: {
+                    type: 'string',
+                    description: 'The phone number to forward the call to in E.164 format',
+                  },
+                  reason: {
+                    type: 'string',
+                    description: 'Reason for forwarding the call',
+                  },
+                },
+                required: ['to'],
+              },
+            },
+          ],
         }
       };
 
@@ -137,10 +125,19 @@ fastify.register(async (fastify) => {
             if (callSid) {
               twilioClient.calls(callSid)
                 .update({ status: 'completed' })
-                .then(call => console.log(`Call ${callSid} has been hung up.`))
+                .then(_call => console.log(`Call ${callSid} has been hung up.`))
                 .catch(error => console.error('Error hanging up the call:', error));
             } else {
               console.error('callSid is not available. Cannot hang up the call.');
+            }
+          } else if (name === 'forwardCall') {
+            if (callSid) {
+              twilioClient.calls(callSid).update({
+                twiml: `<Response>
+                  <Say>Transferring your call now.</Say>
+                  <Dial>${FORWARDING_NUMBER}</Dial>
+                </Response>`,
+              });
             }
           }
         }
