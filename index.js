@@ -4,6 +4,7 @@ import Fastify from 'fastify';
 import WebSocket from 'ws';
 import { OPENAI_API_KEY } from './config.js';
 import { FORWARDING_NUMBER, LOG_EVENT_TYPES, OPENAI_REALTIME_API_URL, PORT, SYSTEM_MESSAGE, VOICE } from './constants.js';
+import { processIncomingSms } from './sms-handler.js';
 import { twilioClient } from './twilio-client.js';
 
 // Initialize Fastify
@@ -14,6 +15,37 @@ fastify.register(fastifyWs);
 // Root Route
 fastify.get('/', async (_request, reply) => {
   reply.send({ message: 'Twilio Media Stream Server is running!' });
+});
+
+// Route to handle incoming SMS
+fastify.all('/incoming-sms', async (request, reply) => {
+  const { From, Body } = request.body;
+
+  // Log the incoming message
+  console.log(`Received SMS from ${From}: ${Body}`);
+
+  // Handle opt-out keywords
+  if (/^\s*(stop|unsubscribe)\s*$/i.test(Body)) {
+    const replyMessage = 'You have been unsubscribed. No further messages will be sent.';
+    const twiml = `<Response><Message>${replyMessage}</Message></Response>`;
+    reply.type('text/xml').send(twiml);
+    return;
+  }
+
+  // Process the message and generate a response
+  try {
+    const responseMessage = await processIncomingSms(From, Body);
+
+    // Send the response back via TwiML
+    const twiml = `<Response><Message>${responseMessage}</Message></Response>`;
+    reply.type('text/xml').send(twiml);
+  } catch (error) {
+    console.error('Error processing incoming SMS:', error);
+    // Optionally send an error message back to the user
+    const errorMessage = 'Sorry, an error occurred while processing your message.';
+    const twiml = `<Response><Message>${errorMessage}</Message></Response>`;
+    reply.type('text/xml').send(twiml);
+  }
 });
 
 // Route for Twilio to handle incoming and outgoing calls
@@ -109,7 +141,7 @@ fastify.register(async (fastify) => {
           type: 'input.text',
           text: 'Hello'
         }))
-      }, 250); // Ensure connection stability, send after .25 seconds
+      }, 500);
     });
 
     // Listen for messages from the OpenAI WebSocket (and send to Twilio if necessary)
